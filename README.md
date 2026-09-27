@@ -1,6 +1,6 @@
 # StatMenu
 
-A free, open-source system monitor for the macOS menu bar, in the spirit of iStat Menus. Native Swift and SwiftUI, around 2% CPU while running.
+A free, open-source system monitor for the macOS menu bar. Native Swift and SwiftUI, around 2% CPU while running.
 
 ![StatMenu](docs/hero.png)
 
