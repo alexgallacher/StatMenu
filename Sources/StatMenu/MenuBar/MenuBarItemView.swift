@@ -19,10 +19,10 @@ struct MenuBarItemView: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             ForEach(modules) { cell(for: $0) }
         }
-        .padding(.horizontal, 5)
+        .padding(.horizontal, 3)
         .frame(height: 22)
         .fixedSize()
     }
@@ -52,7 +52,7 @@ struct MenuBarItemView: View {
                         hue: Module.network.hue, showLabel: settings.showLabels, width: 42)
         case .sensors:
             MenuBarCell(label: "TEMP", value: Fmt.temperature(store.sensors.cpu, fahrenheit: settings.useFahrenheit), hue: Module.sensors.hue,
-                        color: Theme.heat(store.sensors.cpu), showLabel: settings.showLabels, width: 34)
+                        color: Theme.heat(store.sensors.cpu), showLabel: settings.showLabels, width: 28)
         case .battery:
             MenuBarCell(label: "PWR",
                         value: store.battery.present ? Fmt.percent(store.battery.percent)
@@ -69,8 +69,8 @@ struct MenuBarCell: View {
     let hue: Color
     var color: Color = Theme.ink
     let showLabel: Bool
-    /// Wide enough for "100%" so values never truncate.
-    var width: CGFloat = 34
+    /// Wide enough for "100%" (32.2 pt in Inter 11 Medium) so values never truncate.
+    var width: CGFloat = 33
 
     var body: some View {
         VStack(alignment: .leading, spacing: -1.5) {
