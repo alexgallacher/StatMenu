@@ -30,6 +30,10 @@
 	<string>macOS only shares the Wi-Fi network name with apps that have Location access. StatMenu uses it to show the network name and never reads your location.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>macOS only shares the Wi-Fi network name with apps that have Location access. StatMenu uses it to show the network name and never reads your location.</string>
+	<key>StatMenuRepository</key>
+	<string>alexgallacher/StatMenu</string>
+	<key>StatMenuUpdatePublicKey</key>
+	<string>VnmdEbvkCPIyIZaeS0xk1JQOCWRbbPIYwV6D7LfdpTo=</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 Alex Gallacher</string>
 </dict>

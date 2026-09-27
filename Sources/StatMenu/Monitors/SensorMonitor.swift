@@ -28,13 +28,14 @@ final class SensorMonitor {
         ("gas gauge battery", "Battery"),
     ]
 
-    func sample() -> SensorStats {
+    /// `detailed` (a dropdown is open) reads every sensor each call; otherwise the slow ones every fifth call.
+    func sample(detailed: Bool = false) -> SensorStats {
         if !didEnumerate { enumerateSMC() }
         var known: [String: [Double]] = [:]
         var raw: [String: [Double]] = [:]
 
         // Labelled sensors every tick; the long tail of unlabelled SMC keys only every fifth tick.
-        let refreshRaw = tick % 5 == 0
+        let refreshRaw = detailed || tick % 5 == 0
         tick += 1
         if refreshRaw { rawSMC = [:] }
         for key in smcTemperatureKeys {
@@ -90,6 +91,13 @@ final class SensorMonitor {
         var power = 0.0
         if smc_read_value("PSTR", &power) == 0, power > 0, power < 1000 {
             stats.systemPower = power
+        }
+        var batteryPower = 0.0, batteryVoltage = 0.0
+        if smc_read_value("PPBR", &batteryPower) == 0, batteryPower >= 0, batteryPower < 1000 {
+            stats.batteryPower = batteryPower
+        }
+        if smc_read_value("Vb0f", &batteryVoltage) == 0, batteryVoltage > 0, batteryVoltage < 30 {
+            stats.batteryVoltage = batteryVoltage
         }
         var input = 0.0
         if smc_read_value("PDTR", &input) == 0, input >= 0, input < 1000 {

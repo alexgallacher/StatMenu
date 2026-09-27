@@ -8,11 +8,14 @@ final class DiskMonitor {
     private var volumes: [VolumeInfo] = []
     private var volumeRefreshCountdown = 0
     private var previousPerDisk: [String: (read: UInt64, write: UInt64)] = [:]
+    /// Disk chosen in the Disks tab (BSD name); nil means every physical disk.
+    var selected: String? { didSet { if selected != oldValue { lastRead = nil; lastWrite = nil } } }
 
-    func sample() -> DiskStats {
+    /// `detailed` (a dropdown is open) re-reads volume capacity every call instead of every 15th.
+    func sample(detailed: Bool = false) -> DiskStats {
         var stats = DiskStats()
 
-        if volumeRefreshCountdown <= 0 {
+        if detailed || volumeRefreshCountdown <= 0 {
             volumes = Self.readVolumes()
             volumeRefreshCountdown = 15
         }
@@ -23,17 +26,24 @@ final class DiskMonitor {
         let dt = now - lastTime
         var read: UInt64 = 0, write: UInt64 = 0
         var perDisk: [String: (read: UInt64, write: UInt64)] = [:]
-        for disk in Self.readDisks() {
-            read += disk.read
-            write += disk.write
+        let disks = Self.readDisks()
+        let chosen = selected.flatMap { bsd in disks.contains { $0.bsd == bsd } ? bsd : nil }
+        stats.isAutomatic = chosen == nil
+        for disk in disks {
+            let included = chosen.map { $0 == disk.bsd } ?? !disk.isVirtual
             perDisk[disk.bsd] = (disk.read, disk.write)
             var readRate = 0.0, writeRate = 0.0
             if let p = previousPerDisk[disk.bsd], dt > 0, lastRead != nil {
                 readRate = disk.read >= p.read ? Double(disk.read - p.read) / dt : 0
                 writeRate = disk.write >= p.write ? Double(disk.write - p.write) / dt : 0
             }
-            stats.devices.append(DiskDevice(id: disk.bsd, name: disk.name, location: disk.location,
-                                            readRate: readRate, writeRate: writeRate))
+            let device = DiskDevice(id: disk.bsd, name: disk.name, location: disk.location, isVirtual: disk.isVirtual,
+                                    readRate: readRate, writeRate: writeRate)
+            stats.allDevices.append(device)
+            guard included else { continue }
+            stats.devices.append(device)
+            read += disk.read
+            write += disk.write
         }
         previousPerDisk = perDisk
         if let lastRead, let lastWrite, now > lastTime {
@@ -50,8 +60,8 @@ final class DiskMonitor {
     }
 
     /// Every block-storage driver with its cumulative byte counters, product name and BSD name.
-    private static func readDisks() -> [(bsd: String, name: String, location: String, read: UInt64, write: UInt64)] {
-        var result: [(String, String, String, UInt64, UInt64)] = []
+    private static func readDisks() -> [(bsd: String, name: String, location: String, isVirtual: Bool, read: UInt64, write: UInt64)] {
+        var result: [(String, String, String, Bool, UInt64, UInt64)] = []
         var iterator: io_iterator_t = 0
         guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("IOBlockStorageDriver"), &iterator) == KERN_SUCCESS else { return [] }
         defer { IOObjectRelease(iterator) }
@@ -60,7 +70,7 @@ final class DiskMonitor {
             defer { IOObjectRelease(driver); driver = IOIteratorNext(iterator) }
             guard let stats = IORegistryEntryCreateCFProperty(driver, "Statistics" as CFString, kCFAllocatorDefault, 0)?
                 .takeRetainedValue() as? [String: Any] else { continue }
-            var name = "Disk", location = "Unknown", bsd: String?
+            var name = "Disk", location = "Unknown", isVirtual = false, bsd: String?
             var parent: io_registry_entry_t = 0
             if IORegistryEntryGetParentEntry(driver, kIOServicePlane, &parent) == KERN_SUCCESS {
                 if let chars = IORegistryEntryCreateCFProperty(parent, "Device Characteristics" as CFString, kCFAllocatorDefault, 0)?
@@ -70,6 +80,7 @@ final class DiskMonitor {
                 if let proto = IORegistryEntryCreateCFProperty(parent, "Protocol Characteristics" as CFString, kCFAllocatorDefault, 0)?
                     .takeRetainedValue() as? [String: Any], let loc = proto["Physical Interconnect Location"] as? String {
                     location = loc
+                    isVirtual = proto["Physical Interconnect"] as? String == "Virtual Interface"
                 }
                 IOObjectRelease(parent)
             }
@@ -80,7 +91,7 @@ final class DiskMonitor {
                 IOObjectRelease(child)
             }
             guard let bsd else { continue }
-            result.append((bsd, name, location, stats.number("Bytes (Read)")?.uint64Value ?? 0,
+            result.append((bsd, name, location, isVirtual, stats.number("Bytes (Read)")?.uint64Value ?? 0,
                            stats.number("Bytes (Write)")?.uint64Value ?? 0))
         }
         return result.sorted { $0.0.localizedStandardCompare($1.0) == .orderedAscending }

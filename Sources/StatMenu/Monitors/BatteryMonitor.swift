@@ -6,8 +6,9 @@ final class BatteryMonitor {
     private var cached = BatteryStats()
     private var countdown = 0
 
-    func sample() -> BatteryStats {
-        guard countdown <= 0 else {
+    /// `detailed` (a dropdown is open) refreshes every call; otherwise every fifth call to save energy.
+    func sample(detailed: Bool = false) -> BatteryStats {
+        guard detailed || countdown <= 0 else {
             countdown -= 1
             return cached
         }
@@ -25,6 +26,7 @@ final class BatteryMonitor {
                 stats.percent = max > 0 ? current / max : 0
                 stats.isCharging = desc[kIOPSIsChargingKey] as? Bool ?? false
                 stats.isCharged = desc[kIOPSIsChargedKey] as? Bool ?? false
+                stats.isFinishing = desc[kIOPSIsFinishingChargeKey] as? Bool ?? false
                 stats.onAC = desc[kIOPSPowerSourceStateKey] as? String == kIOPSACPowerValue
                 let key = stats.isCharging ? kIOPSTimeToFullChargeKey : kIOPSTimeToEmptyKey
                 if let minutes = desc.number(key)?.intValue, minutes > 0, minutes < 60 * 24 {

@@ -8,7 +8,8 @@ enum PreviewRenderer {
         let store = SystemStore()
         let settings = AppSettings(defaults: UserDefaults(suiteName: "StatMenu.previews")!)
         let sampler = Sampler()
-        for _ in 0..<25 {
+        let samples = Int(ProcessInfo.processInfo.environment["STATMENU_PREVIEW_SAMPLES"] ?? "") ?? 25
+        for _ in 0..<samples {
             store.apply(sampler.sampleNow())
             Thread.sleep(forTimeInterval: 0.4)
         }
@@ -21,6 +22,7 @@ enum PreviewRenderer {
                 let view = DropdownView(content: .single(module), store: store, settings: settings)
                     .background(Color(nsColor: .windowBackgroundColor))
                     .environment(\.colorScheme, scheme)
+                    .environment(\.isStaticRender, true)
                 write(view, to: dir.appendingPathComponent("dropdown-\(module.rawValue)-\(suffix).png"))
             }
             let bar = HStack(spacing: 6) {

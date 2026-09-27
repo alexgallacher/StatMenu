@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppActions.shared.openSettingsHandler = { [weak self] in self?.showSettings() }
+        AppActions.shared.updater.start()
 
         store.longTerm.load()
         store.dataUsage.load()
@@ -29,6 +30,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.store.apply(snapshot)
             self.controllers.values.forEach { $0.refresh() }
         }
+        sampler.setNetworkInterface(settings.networkInterface)
+        sampler.setDiskSelection(settings.diskSelection)
         restartSampler()
 
         syncStatusItems()
@@ -73,6 +76,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func settingsChanged() {
         if settings.updateInterval != appliedInterval { restartSampler() }
+        sampler.setNetworkInterface(settings.networkInterface)
+        sampler.setDiskSelection(settings.diskSelection)
         syncStatusItems()
         controllers.values.forEach { $0.refresh() }
     }
@@ -101,7 +106,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let hosting = NSHostingController(rootView: SettingsView(settings: settings, store: store))
             let window = NSWindow(contentViewController: hosting)
             window.title = "StatMenu Settings"
-            window.styleMask = [.titled, .closable, .miniaturizable]
+            window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            hosting.sizingOptions = [.minSize]
+            window.setContentSize(NSSize(width: 760, height: 560))
             window.isReleasedWhenClosed = false
             window.center()
             settingsWindow = window

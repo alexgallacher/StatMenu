@@ -46,16 +46,10 @@ struct MenuBarItemView: View {
         case .disk:
             MenuBarCell(label: "DISK", value: Fmt.percent(store.disk.root?.usage ?? 0), hue: Module.disk.hue, showLabel: settings.showLabels)
         case .network:
-            HStack(alignment: .top, spacing: 3) {
-                Circle().fill(Module.network.hue).frame(width: 4, height: 4).padding(.top, 3)
-                VStack(alignment: .trailing, spacing: -1) {
-                    Text(Fmt.compactRate(store.network.upRate) + " ↑")
-                    Text(Fmt.compactRate(store.network.downRate) + " ↓")
-                }
-                .font(Typo.inter(9, .medium).monospacedDigit())
-                .foregroundStyle(Theme.ink)
-                .frame(width: 38, alignment: .trailing)
-            }
+            // Same pattern as every other item: dot + small label (upload) over the main value (download).
+            MenuBarCell(label: "↑ " + Fmt.compactRate(store.network.upRate),
+                        value: "↓ " + Fmt.compactRate(store.network.downRate),
+                        hue: Module.network.hue, showLabel: settings.showLabels, width: 42)
         case .sensors:
             MenuBarCell(label: "TEMP", value: Fmt.temperature(store.sensors.cpu, fahrenheit: settings.useFahrenheit), hue: Module.sensors.hue,
                         color: Theme.heat(store.sensors.cpu), showLabel: settings.showLabels, width: 34)
@@ -75,7 +69,8 @@ struct MenuBarCell: View {
     let hue: Color
     var color: Color = Theme.ink
     let showLabel: Bool
-    var width: CGFloat = 30
+    /// Wide enough for "100%" so values never truncate.
+    var width: CGFloat = 34
 
     var body: some View {
         VStack(alignment: .leading, spacing: -1.5) {

@@ -84,11 +84,6 @@ struct ModulePanel: View {
                 }
             }
         }
-        if let power = c.power {
-            Block(label: "Power") {
-                Row(label: "CPU power", value: Fmt.watts(power), hover: watts("CPU power", "power.cpu", .cpu))
-            }
-        }
         Block(label: "Processes") {
             ProcessRows(entries: store.topCPU) { String(format: "%.1f%%", $0.cpu) }
         }
@@ -122,11 +117,6 @@ struct ModulePanel: View {
             Block(label: "Clock speed", trailing: "Current / max") {
                 ClockRow(reading: clock, hue: Module.gpu.hue)
                     .hoverHistory(self.clock("GPU clock", "clock.GPU", .gpu, max: clock.maxMHz))
-            }
-        }
-        if let power = g.power {
-            Block(label: "Power") {
-                Row(label: "GPU power", value: Fmt.watts(power), hover: watts("GPU power", "power.gpu", .gpu))
             }
         }
         Block(label: "Engines") {
@@ -194,8 +184,13 @@ struct ModulePanel: View {
             Stat(label: "Read", value: Fmt.rate(d.readRate), hover: rate("Disk read", "disk.read", .disk)),
             Stat(label: "Write", value: Fmt.rate(d.writeRate), hover: rate("Disk write", "disk.write", .disk)),
         ])
-        if !d.devices.isEmpty {
+        if !d.allDevices.isEmpty {
             Block(label: "Disks") {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Showing").font(Typo.body).foregroundStyle(Theme.text)
+                    Spacer()
+                    DiskPicker(disk: d, settings: settings)
+                }
                 ForEach(d.devices) { dev in
                     VStack(alignment: .leading, spacing: 6) {
                         HStack(alignment: .firstTextBaseline) {
@@ -212,11 +207,13 @@ struct ModulePanel: View {
             }
         }
         Block(label: "Processes", trailing: "Read + write") {
-            if store.topDisk.isEmpty {
-                Text("No disk activity from your apps right now.").font(Typo.body).foregroundStyle(Theme.label)
-            }
-            ForEach(store.topDisk) { p in
-                Row(label: p.name, value: Fmt.rate(p.total))
+            // Always five rows, so the panel doesn't change height as processes come and go.
+            ForEach(0..<5, id: \.self) { i in
+                if i < store.topDisk.count {
+                    Row(label: store.topDisk[i].name, value: Fmt.rate(store.topDisk[i].total))
+                } else {
+                    Row(label: "—", value: "", valueColor: Theme.label)
+                }
             }
         }
         Block(label: "Volumes") {
@@ -253,7 +250,11 @@ struct ModulePanel: View {
             Stat(label: "Peak up", value: Fmt.rate(columnPeak(upCols) ?? 0), hover: rate("Upload", "net.up", .network)),
         ])
         Block(label: "Connection") {
-            Row(label: "Interface", value: n.interfaceName ?? "—")
+            HStack(alignment: .firstTextBaseline) {
+                Text("Interface").font(Typo.body).foregroundStyle(Theme.text)
+                Spacer()
+                InterfacePicker(network: n, settings: settings)
+            }
             Row(label: "Local IP", value: n.localIP ?? "—")
         }
         if let w = n.wifi {
@@ -361,7 +362,8 @@ struct ModulePanel: View {
         }
         if b.present {
             StatStrip(items: [
-                Stat(label: b.isCharging ? "Until full" : "Remaining", value: b.timeRemaining.map(Fmt.minutes) ?? "—"),
+                Stat(label: b.isCharging ? "Until full" : "Remaining",
+                     value: b.isFinishing || (b.onAC && b.isFull) ? "Full" : b.timeRemaining.map(Fmt.minutes) ?? "—"),
                 Stat(label: "Health", value: b.health.map(Fmt.percent) ?? "—"),
                 Stat(label: "Cycles", value: b.cycleCount.map(String.init) ?? "—"),
             ])
@@ -493,5 +495,115 @@ struct SwatchRow: View {
             Spacer()
             AnimatedValue(text: value)
         }
+    }
+}
+
+/// True when rendering previews offscreen, where menu controls can't be drawn.
+private struct StaticRenderKey: EnvironmentKey { static let defaultValue = false }
+extension EnvironmentValues {
+    var isStaticRender: Bool {
+        get { self[StaticRenderKey.self] }
+        set { self[StaticRenderKey.self] = newValue }
+    }
+}
+
+/// Chooses which network interface the Network tab (and menu bar) measures.
+struct InterfacePicker: View {
+    let network: NetworkStats
+    let settings: AppSettings
+    @Environment(\.isStaticRender) private var isStaticRender
+
+    var body: some View {
+        if isStaticRender { label } else { menu }
+    }
+
+    private var menu: some View {
+        Menu {
+            Button {
+                settings.networkInterface = nil
+            } label: {
+                if network.isAutomatic { Label("Automatic", systemImage: "checkmark") } else { Text("Automatic") }
+            }
+            Divider()
+            ForEach(network.available) { iface in
+                Button {
+                    settings.networkInterface = iface.id
+                } label: {
+                    let title = "\(iface.name) (\(iface.id))"
+                    if !network.isAutomatic && network.interface == iface.id {
+                        Label(title, systemImage: "checkmark")
+                    } else {
+                        Text(title)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                labelContent
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+    }
+
+    private var label: some View { HStack(spacing: 4) { labelContent } }
+
+    @ViewBuilder private var labelContent: some View {
+        Text(network.isAutomatic ? "Automatic · \(network.interfaceName ?? "—")" : (network.interfaceName ?? network.interface ?? "—"))
+            .font(Typo.value)
+            .foregroundStyle(Theme.ink)
+        Image(systemName: "chevron.up.chevron.down")
+            .font(.system(size: 8, weight: .semibold))
+            .foregroundStyle(Theme.label)
+    }
+}
+
+/// Chooses which disk the Disks tab measures: every physical disk, or one specific disk.
+struct DiskPicker: View {
+    let disk: DiskStats
+    let settings: AppSettings
+    @Environment(\.isStaticRender) private var isStaticRender
+
+    var body: some View {
+        if isStaticRender { HStack(spacing: 4) { labelContent } } else { menu }
+    }
+
+    private var menu: some View {
+        Menu {
+            Button {
+                settings.diskSelection = nil
+            } label: {
+                if disk.isAutomatic { Label("Automatic (physical disks)", systemImage: "checkmark") } else { Text("Automatic (physical disks)") }
+            }
+            Divider()
+            ForEach(disk.allDevices) { dev in
+                Button {
+                    settings.diskSelection = dev.id
+                } label: {
+                    let title = "\(dev.name) (\(dev.id))\(dev.isVirtual ? " · disk image" : "")"
+                    if !disk.isAutomatic && disk.devices.first?.id == dev.id {
+                        Label(title, systemImage: "checkmark")
+                    } else {
+                        Text(title)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) { labelContent }
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+    }
+
+    @ViewBuilder private var labelContent: some View {
+        Text(disk.isAutomatic ? "Automatic · \(disk.devices.count == 1 ? disk.devices[0].name : "\(disk.devices.count) disks")"
+                              : (disk.devices.first?.name ?? "—"))
+            .font(Typo.value)
+            .foregroundStyle(Theme.ink)
+        Image(systemName: "chevron.up.chevron.down")
+            .font(.system(size: 8, weight: .semibold))
+            .foregroundStyle(Theme.label)
     }
 }

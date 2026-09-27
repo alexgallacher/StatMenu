@@ -40,6 +40,7 @@ struct DropdownView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, modules.count > 1 ? 14 : 20)
                 .padding(.bottom, 22)
+            UpdateBanner(updater: AppActions.shared.updater)
             DropdownFooter()
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
@@ -65,6 +66,32 @@ extension Module {
     }
 }
 
+/// Shown above the footer when a newer version is available or being installed.
+struct UpdateBanner: View {
+    let updater: Updater
+
+    var body: some View {
+        if let release = updater.availableRelease {
+            HStack {
+                Circle().fill(Theme.control).frame(width: 6, height: 6)
+                Text("StatMenu \(release.version) is available").font(Typo.caption).foregroundStyle(Theme.ink)
+                Spacer()
+                LinkButton(title: "Update") { updater.install(release) }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 10)
+        } else if updater.state == .installing {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.mini)
+                Text("Installing update…").font(Typo.caption).foregroundStyle(Theme.label)
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 10)
+        }
+    }
+}
+
 struct DropdownFooter: View {
     var body: some View {
         HStack(spacing: 16) {
@@ -80,6 +107,7 @@ struct DropdownFooter: View {
 @MainActor
 final class AppActions {
     static let shared = AppActions()
+    let updater = Updater()
     var openSettingsHandler: () -> Void = {}
 
     func openSettings() { openSettingsHandler() }

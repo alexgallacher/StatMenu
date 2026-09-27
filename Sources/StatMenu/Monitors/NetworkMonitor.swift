@@ -9,11 +9,16 @@ final class NetworkMonitor {
     private var primary: String?
     private var displayName: String?
     private var localIP: String?
+    private var available: [NetworkInterface] = []
+    /// Interface chosen in the Network tab; nil follows the system's primary interface.
+    var selected: String? { didSet { if selected != oldValue { infoCountdown = 0 } } }
 
-    func sample() -> NetworkStats {
-        if infoCountdown <= 0 {
-            primary = Self.primaryInterface()
-            displayName = primary.flatMap(Self.displayName(for:))
+    /// `detailed` (a dropdown is open) re-reads interface details every call instead of every 10th.
+    func sample(detailed: Bool = false) -> NetworkStats {
+        if detailed || infoCountdown <= 0 {
+            available = Self.interfaces()
+            primary = selected ?? Self.primaryInterface()
+            displayName = primary.flatMap { bsd in available.first { $0.id == bsd }?.name } ?? primary.flatMap(Self.displayName(for:))
             localIP = primary.flatMap(Self.ipv4Address(for:))
             infoCountdown = 10
         }
@@ -48,6 +53,8 @@ final class NetworkMonitor {
         stats.interface = primary
         stats.interfaceName = displayName
         stats.localIP = localIP
+        stats.available = available
+        stats.isAutomatic = selected == nil
         return stats
     }
 
@@ -85,6 +92,16 @@ final class NetworkMonitor {
               let value = SCDynamicStoreCopyValue(store, "State:/Network/Global/IPv4" as CFString) as? [String: Any]
         else { return nil }
         return value["PrimaryInterface"] as? String
+    }
+
+    /// Hardware network interfaces macOS knows about (Wi-Fi, Ethernet, Thunderbolt, USB adapters…).
+    private static func interfaces() -> [NetworkInterface] {
+        guard let all = SCNetworkInterfaceCopyAll() as? [SCNetworkInterface] else { return [] }
+        return all.compactMap { iface in
+            guard let bsd = SCNetworkInterfaceGetBSDName(iface) as String? else { return nil }
+            let name = SCNetworkInterfaceGetLocalizedDisplayName(iface) as String? ?? bsd
+            return NetworkInterface(id: bsd, name: name)
+        }
     }
 
     private static func displayName(for bsdName: String) -> String? {

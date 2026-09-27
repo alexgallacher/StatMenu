@@ -80,12 +80,18 @@ struct DiskDevice: Identifiable {
     let name: String        // product name reported by the device
     /// Connection type as the device reports it, e.g. "Internal", "External", "Virtual".
     let location: String
+    /// Disk images (.dmg) and other file-backed disks, as reported by the device.
+    let isVirtual: Bool
     var readRate: Double
     var writeRate: Double
 }
 
 struct DiskStats {
+    /// Disks included in the figures (the chosen one, or all physical disks when automatic).
     var devices: [DiskDevice] = []
+    /// Every disk, for the picker.
+    var allDevices: [DiskDevice] = []
+    var isAutomatic = true
     var volumes: [VolumeInfo] = []
     var readRate: Double = 0
     var writeRate: Double = 0
@@ -107,6 +113,15 @@ struct NetworkStats {
     var deltaIn: UInt64 = 0
     var deltaOut: UInt64 = 0
     var wifi: WiFiInfo?
+    /// Interfaces that can be chosen in the Network tab: (BSD name, display name).
+    var available: [NetworkInterface] = []
+    /// True when following the system's primary interface rather than a chosen one.
+    var isAutomatic = true
+}
+
+struct NetworkInterface: Identifiable, Hashable {
+    let id: String      // BSD name, e.g. "en0"
+    let name: String    // e.g. "Wi-Fi"
 }
 
 struct WiFiInfo {
@@ -130,6 +145,8 @@ struct BatteryStats {
     var isCharging = false
     var onAC = false
     var isCharged = false
+    /// macOS shows 100% but is still topping the battery off at a trickle ("finishing charge").
+    var isFinishing = false
     var timeRemaining: Int?
     var cycleCount: Int?
     var health: Double?
@@ -139,15 +156,23 @@ struct BatteryStats {
     var adapterWatts: Int?
     var condition: String?
 
+    /// Live battery power from the SMC while discharging (the fuel gauge only updates every 20–60 s).
+    var measuredPower: Double?
+
     var power: Double? {
+        if let measuredPower { return measuredPower }
         guard let voltage, let amperage else { return nil }
         return abs(voltage * amperage)
     }
 
+    /// Plugged in, not charging, and below full: macOS is holding the charge (Optimized Charging or a charge limit).
+    var isOnHold: Bool { onAC && !isCharging && !isFull }
+    var isFull: Bool { isCharged || percent >= 0.995 }
+
     var statusText: String {
-        if isCharging { return "Charging" }
-        if onAC { return isCharged || percent >= 0.99 ? "Fully Charged" : "Not Charging" }
-        return "On Battery"
+        if isCharging { return isFinishing ? "Charged · finishing charge" : "Charging" }
+        if onAC { return isFull ? "Charged" : "Charging on hold at \(Int((percent * 100).rounded()))%" }
+        return "On battery"
     }
 }
 
@@ -189,6 +214,9 @@ struct SensorStats {
     var systemPower: Double?
     /// Power arriving from the power adapter (0 when unplugged).
     var adapterInput: Double?
+    /// Live battery power (SMC PPBR) and a candidate live battery voltage (SMC Vb0f).
+    var batteryPower: Double?
+    var batteryVoltage: Double?
     var powerBreakdown: [PowerComponent] = []
 }
 

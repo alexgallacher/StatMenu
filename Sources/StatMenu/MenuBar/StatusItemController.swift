@@ -154,7 +154,7 @@ final class StatusItemController: NSObject {
         dropdownView.rootView = makeDropdown()
         dropdownView.layoutSubtreeIfNeeded()
         let modules: [Module] = if case .single(let m) = content { [m] } else { settings.enabledModules }
-        sampler.setProcessesWanted(modules.contains { [.cpu, .memory, .disk].contains($0) })
+        sampler.setDropdownOpen(true, processes: modules.contains { [.cpu, .memory, .disk].contains($0) })
 
         let buttonRect = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
         let screen = buttonWindow.screen ?? NSScreen.main
@@ -184,7 +184,7 @@ final class StatusItemController: NSObject {
         dropdownView.rootView = AnyView(EmptyView())
         statusItem.button?.highlight(false)
         removeMonitors()
-        sampler.setProcessesWanted(false)
+        sampler.setDropdownOpen(false)
     }
 
     private var anchorX: CGFloat = 0

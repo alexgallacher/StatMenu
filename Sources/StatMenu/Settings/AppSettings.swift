@@ -21,6 +21,14 @@ final class AppSettings {
     var showLabels: Bool {
         didSet { defaults.set(showLabels, forKey: Keys.labels); onChange?() }
     }
+    /// Network interface to measure (BSD name); nil follows the system's primary interface.
+    var networkInterface: String? {
+        didSet { defaults.set(networkInterface, forKey: Keys.interface); onChange?() }
+    }
+    /// Disk to measure (BSD name); nil means every physical disk.
+    var diskSelection: String? {
+        didSet { defaults.set(diskSelection, forKey: Keys.disk); onChange?() }
+    }
     /// One status item holding every enabled module, instead of one item per module.
     var combined: Bool {
         didSet { defaults.set(combined, forKey: Keys.combined); onChange?() }
@@ -33,6 +41,8 @@ final class AppSettings {
         static let graphs = "showGraphs"
         static let labels = "showLabels"
         static let combined = "combinedItem"
+        static let interface = "networkInterface"
+        static let disk = "diskSelection"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -48,6 +58,8 @@ final class AppSettings {
         showGraphs = defaults.object(forKey: Keys.graphs) as? Bool ?? false
         showLabels = defaults.object(forKey: Keys.labels) as? Bool ?? true
         combined = defaults.object(forKey: Keys.combined) as? Bool ?? true
+        networkInterface = defaults.string(forKey: Keys.interface)
+        diskSelection = defaults.string(forKey: Keys.disk)
     }
 
     func isEnabled(_ module: Module) -> Bool { enabledModules.contains(module) }

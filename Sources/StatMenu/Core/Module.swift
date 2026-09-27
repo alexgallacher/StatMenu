@@ -36,7 +36,7 @@ enum Module: String, CaseIterable, Identifiable, Codable {
         case .memory: "Pressure, composition, swap and top processes"
         case .disk: "Volume capacity and read/write activity"
         case .network: "Upload and download speeds, interface details"
-        case .sensors: "Temperatures, fan speeds and system power"
+        case .sensors: "Temperatures and fan speeds"
         case .battery: "Battery, charging and where system power goes"
         }
     }
