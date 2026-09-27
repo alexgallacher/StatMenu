@@ -10,7 +10,7 @@ struct HoverSeries {
     var maxValue: Double?
 }
 
-/// Shows a history card beside the menu after the pointer rests on the view, like iStat Menus.
+/// Shows a history card beside the menu after the pointer rests on the view.
 struct HistoryHover: ViewModifier {
     let series: HoverSeries?
     @Environment(SystemStore.self) private var store
