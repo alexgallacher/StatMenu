@@ -272,8 +272,9 @@ private struct AboutPage: View {
                 CardDivider()
                 SettingRow(title: "Uptime") { AnimatedValue(text: Fmt.uptime(since: store.bootDate)) }
             }
-            LinkButton(title: "View on GitHub") {
-                NSWorkspace.shared.open(URL(string: "https://github.com/alexgallacher/StatMenu")!)
+            if let repository = Bundle.main.object(forInfoDictionaryKey: "StatMenuRepository") as? String,
+               let url = URL(string: "https://github.com/\(repository)") {
+                LinkButton(title: "View on GitHub") { NSWorkspace.shared.open(url) }
             }
         }
     }

@@ -1,4 +1,9 @@
-# StatMenu
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/statmenu-wordmark-white.png">
+    <img src="docs/brand/statmenu-wordmark.png" alt="StatMenu" width="360">
+  </picture>
+</p>
 
 A free, open-source system monitor for the macOS menu bar. Native Swift and SwiftUI, around 2% CPU while running.
 
