@@ -59,7 +59,7 @@ extension Module {
         case .network: "Network"
         case .sensors: "Temp"
         case .disk: "Disk"
-        case .battery: "Battery"
+        case .battery: "Power"
         default: title
         }
     }

@@ -176,8 +176,6 @@ struct FanReading: Identifiable {
 struct PowerComponent: Identifiable {
     let name: String
     let watts: Double
-    /// Hardware channel names folded into this entry (for "Rest of chip").
-    var parts: [(String, Double)] = []
     var id: String { name }
 }
 

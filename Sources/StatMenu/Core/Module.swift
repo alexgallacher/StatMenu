@@ -13,7 +13,7 @@ enum Module: String, CaseIterable, Identifiable, Codable {
         case .disk: "Disks"
         case .network: "Network"
         case .sensors: "Sensors"
-        case .battery: "Battery"
+        case .battery: "Power"
         }
     }
 
@@ -25,7 +25,7 @@ enum Module: String, CaseIterable, Identifiable, Codable {
         case .disk: "DISK"
         case .network: "NET"
         case .sensors: "CPU"
-        case .battery: "BAT"
+        case .battery: "PWR"
         }
     }
 
@@ -37,7 +37,7 @@ enum Module: String, CaseIterable, Identifiable, Codable {
         case .disk: "Volume capacity and read/write activity"
         case .network: "Upload and download speeds, interface details"
         case .sensors: "Temperatures, fan speeds and system power"
-        case .battery: "Charge, health, cycles and power draw"
+        case .battery: "Battery, charging and where system power goes"
         }
     }
 
@@ -49,7 +49,7 @@ enum Module: String, CaseIterable, Identifiable, Codable {
         case .disk: "internaldrive"
         case .network: "network"
         case .sensors: "thermometer.medium"
-        case .battery: "battery.75percent"
+        case .battery: "bolt"
         }
     }
 

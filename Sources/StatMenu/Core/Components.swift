@@ -151,10 +151,11 @@ struct MeterRow: View {
     let hue: Color
     var hover: HoverSeries?
     var valueWidth: CGFloat = 66
+    var labelWidth: CGFloat = 96
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(label).font(Typo.body).foregroundStyle(Theme.text).lineLimit(1).frame(width: 96, alignment: .leading)
+            Text(label).font(Typo.body).foregroundStyle(Theme.text).lineLimit(1).frame(width: labelWidth, alignment: .leading)
             Meter(fraction: fraction, hue: hue)
             AnimatedValue(text: value).frame(width: valueWidth, alignment: .trailing)
         }

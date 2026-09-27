@@ -130,7 +130,7 @@ private struct MenuBarSettings: View {
                 }
             }
             SettingsSection(label: "Modules") {
-                ForEach(Module.allCases.filter { $0 != .battery || store.battery.present }) { module in
+                ForEach(Module.allCases) { module in
                     SettingRow(title: module.title, detail: module.detail) {
                         Toggle("", isOn: Binding(get: { settings.isEnabled(module) }, set: { settings.setEnabled(module, $0) }))
                             .labelsHidden().controlSize(.small)

@@ -60,7 +60,10 @@ struct MenuBarItemView: View {
             MenuBarCell(label: "TEMP", value: Fmt.temperature(store.sensors.cpu, fahrenheit: settings.useFahrenheit), hue: Module.sensors.hue,
                         color: Theme.heat(store.sensors.cpu), showLabel: settings.showLabels, width: 34)
         case .battery:
-            MenuBarCell(label: "BAT", value: Fmt.percent(store.battery.percent), hue: Module.battery.hue, showLabel: settings.showLabels)
+            MenuBarCell(label: "PWR",
+                        value: store.battery.present ? Fmt.percent(store.battery.percent)
+                            : store.sensors.systemPower.map { "\(Int($0.rounded()))W" } ?? "—",
+                        hue: Module.battery.hue, showLabel: settings.showLabels)
         }
     }
 }

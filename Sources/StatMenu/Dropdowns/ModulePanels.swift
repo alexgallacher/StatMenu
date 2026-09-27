@@ -300,7 +300,7 @@ struct ModulePanel: View {
 
     @ViewBuilder private var sensors: some View {
         let s = store.sensors
-        PanelTitle(title: "Sensors", detail: s.systemPower.map { String(format: "%.1f W system power", $0) } ?? "Temperatures")
+        PanelTitle(title: "Sensors", detail: s.fans.isEmpty ? "Temperatures" : "Temperatures and fans")
         Readout(value: s.cpu.map { _ in String(temp(s.cpu).dropLast()) } ?? "—", unit: "\(tempUnit) CPU", color: Theme.heat(s.cpu))
         let tempCols = cols("temp.cpu")
         BarHistory(values: tempCols, minValue: 20, maxValue: 105, hue: Module.sensors.hue).frame(height: 56).id(range).transition(.opacity)
@@ -316,25 +316,6 @@ struct ModulePanel: View {
                     MeterRow(label: "Fan \(fan.index + 1)", fraction: fan.fraction, value: "\(Int(fan.rpm)) rpm", hue: Module.sensors.hue,
                              hover: HoverSeries(title: "Fan \(fan.index + 1)", key: "fan.\(fan.index)", hue: Module.sensors.hue,
                                                 format: { "\(Int($0)) rpm" }, maxValue: fan.max > 0 ? fan.max : nil))
-                }
-            }
-        }
-        if let total = s.systemPower {
-            Block(label: "Power", trailing: "\(Fmt.watts(total)) total") {
-                Row(label: "System total", value: Fmt.watts(total), hover: watts("System power", "power.system", .sensors))
-                ForEach(s.powerBreakdown) { part in
-                    VStack(alignment: .leading, spacing: 3) {
-                        MeterRow(label: part.name, fraction: total > 0 ? part.watts / total : 0, value: Fmt.watts(part.watts),
-                                 hue: Module.sensors.hue, hover: watts(part.name, "power.part.\(part.name)", .sensors),
-                                 valueWidth: 70)
-                        if !part.parts.isEmpty {
-                            Text(part.parts.prefix(4).map { "\($0.0) \(Fmt.watts($0.1))" }.joined(separator: " · "))
-                                .font(Typo.caption).foregroundStyle(Theme.label).lineLimit(1)
-                        }
-                    }
-                }
-                if let input = s.adapterInput, input >= 0.5 {
-                    Row(label: "Power adapter input", value: Fmt.watts(input), hover: watts("Power adapter input", "power.adapter", .sensors))
                 }
             }
         }
@@ -365,17 +346,26 @@ struct ModulePanel: View {
 
     @ViewBuilder private var battery: some View {
         let b = store.battery
-        PanelTitle(title: "Battery", detail: b.present ? b.statusText : "No battery")
-        Readout(value: "\(Int((b.percent * 100).rounded()))", unit: "%",
-                color: b.percent < 0.15 && !b.onAC ? Theme.critical : Theme.ink)
-        BarHistory(values: cols("battery.percent"), maxValue: 1, autoRange: true, hue: Module.battery.hue)
-            .frame(height: 56).id(range).transition(.opacity)
-        ChartCaption(interval: settings.updateInterval, peak: b.power.map { String(format: "%.1f W", $0) })
-        StatStrip(items: [
-            Stat(label: b.isCharging ? "Until full" : "Remaining", value: b.timeRemaining.map(Fmt.minutes) ?? "—"),
-            Stat(label: "Health", value: b.health.map(Fmt.percent) ?? "—"),
-            Stat(label: "Cycles", value: b.cycleCount.map(String.init) ?? "—"),
-        ])
+        PanelTitle(title: "Power", detail: b.present ? "Battery · \(b.statusText)" : "Power adapter")
+        if b.present {
+            Readout(value: "\(Int((b.percent * 100).rounded()))", unit: "% battery",
+                    color: b.percent < 0.15 && !b.onAC ? Theme.critical : Theme.ink)
+            BarHistory(values: cols("battery.percent"), maxValue: 1, autoRange: true, hue: Module.battery.hue)
+                .frame(height: 56).id(range).transition(.opacity)
+            ChartCaption(interval: settings.updateInterval,
+                         peak: b.power.map { "\(b.isCharging ? "Charging" : "Draw") \(Fmt.watts($0))" })
+        } else if let total = store.sensors.systemPower {
+            Readout(value: String(format: "%.1f", total), unit: "W system")
+            BarHistory(values: cols("power.system"), hue: Module.battery.hue).frame(height: 56).id(range).transition(.opacity)
+            ChartCaption(interval: settings.updateInterval, peak: nil)
+        }
+        if b.present {
+            StatStrip(items: [
+                Stat(label: b.isCharging ? "Until full" : "Remaining", value: b.timeRemaining.map(Fmt.minutes) ?? "—"),
+                Stat(label: "Health", value: b.health.map(Fmt.percent) ?? "—"),
+                Stat(label: "Cycles", value: b.cycleCount.map(String.init) ?? "—"),
+            ])
+        }
         if b.onAC, let rated = b.adapterWatts {
             let input = store.sensors.adapterInput ?? 0
             Block(label: "Charging", trailing: "\(rated) W adapter") {
@@ -388,20 +378,35 @@ struct ModulePanel: View {
                 }
             }
         }
-        Block(label: "Power") {
-            Row(label: "Source", value: b.onAC ? "Adapter" : "Battery")
-            if let w = b.adapterWatts, b.onAC { Row(label: "Adapter", value: "\(w) W") }
-            if let p = b.power {
-                Row(label: b.isCharging ? "Charging" : "Draw", value: String(format: "%.1f W", p),
-                    hover: watts(b.isCharging ? "Charging rate" : "Power draw", "battery.power", .battery))
+        if let total = store.sensors.systemPower {
+            Block(label: "Where power goes", trailing: "\(Fmt.watts(total)) total") {
+                Row(label: "System total", value: Fmt.watts(total), hover: watts("System power", "power.system", .battery))
+                ForEach(store.sensors.powerBreakdown) { part in
+                    MeterRow(label: part.name, fraction: total > 0 ? part.watts / total : 0, value: Fmt.watts(part.watts),
+                             hue: Module.battery.hue, hover: watts(part.name, "power.part.\(part.name)", .battery),
+                             valueWidth: 70, labelWidth: 124)
+                }
+                if let input = store.sensors.adapterInput, input >= 0.5 {
+                    Row(label: "Power adapter input", value: Fmt.watts(input), hover: watts("Power adapter input", "power.adapter", .battery))
+                }
             }
-            if let v = b.voltage {
-                Row(label: "Voltage", value: String(format: "%.2f V", v),
-                    hover: HoverSeries(title: "Battery voltage", key: "battery.voltage", hue: Module.battery.hue,
-                                       format: { String(format: "%.2f V", $0) }))
-            }
-            if let t = b.temperature ?? store.sensors.battery {
-                Row(label: "Temperature", value: temp(t), hover: heat("Battery temperature", "temp.battery"))
+        }
+        if b.present {
+            Block(label: "Battery") {
+                Row(label: "Source", value: b.onAC ? "Adapter" : "Battery")
+                if let w = b.adapterWatts, b.onAC { Row(label: "Adapter", value: "\(w) W") }
+                if let p = b.power {
+                    Row(label: b.isCharging ? "Charging" : "Draw", value: String(format: "%.1f W", p),
+                        hover: watts(b.isCharging ? "Charging rate" : "Power draw", "battery.power", .battery))
+                }
+                if let v = b.voltage {
+                    Row(label: "Voltage", value: String(format: "%.2f V", v),
+                        hover: HoverSeries(title: "Battery voltage", key: "battery.voltage", hue: Module.battery.hue,
+                                           format: { String(format: "%.2f V", $0) }))
+                }
+                if let t = b.temperature ?? store.sensors.battery {
+                    Row(label: "Temperature", value: temp(t), hover: heat("Battery temperature", "temp.battery"))
+                }
             }
         }
     }
