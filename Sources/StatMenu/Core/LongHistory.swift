@@ -99,6 +99,20 @@ struct Rollup: Codable {
         return (0..<count).map { n[$0] > 0 ? sum[$0] / n[$0] : nil }
     }
 
+    /// Sum of every value added in the `span` seconds ending at `now` (whole buckets), or nil when none were.
+    /// Used for quantities recorded as per-tick amounts, such as energy.
+    func total(span: Double, now: TimeInterval) -> Double? {
+        guard latest >= 0 else { return nil }
+        let first = max(latest - capacity + 1, Int((now - span) / bucketSeconds) + 1)
+        guard first <= latest else { return nil }
+        var sum = 0.0, any = false
+        for bucket in first...latest where counts[bucket % capacity] > 0 {
+            sum += Double(sums[bucket % capacity])
+            any = true
+        }
+        return any ? sum : nil
+    }
+
     // Arrays are stored as raw bytes to keep the saved file small and fast to write.
     private enum CodingKeys: String, CodingKey { case bucketSeconds, capacity, sums, counts, latest }
 
@@ -143,6 +157,14 @@ struct LongHistory: Codable {
         case .week: return tenMinutes.columns(span: range.seconds!, count: HistoryRange.columns, now: now)
         }
     }
+
+    func total(_ range: HistoryRange, now: TimeInterval) -> Double? {
+        switch range {
+        case .recent: return nil
+        case .hour, .day: return minutes.total(span: range.seconds!, now: now)
+        case .week: return tenMinutes.total(span: range.seconds!, now: now)
+        }
+    }
 }
 
 /// Holds every value's long-term history. A reference type so per-tick updates mutate in place.
@@ -162,6 +184,10 @@ final class LongTermStore {
 
     func columns(_ key: String, _ range: HistoryRange, now: TimeInterval) -> [Double?] {
         histories[key]?.columns(range, now: now) ?? Array(repeating: nil, count: HistoryRange.columns)
+    }
+
+    func total(_ key: String, _ range: HistoryRange, now: TimeInterval) -> Double? {
+        histories[key]?.total(range, now: now)
     }
 
     func load() {
