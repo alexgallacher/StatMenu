@@ -321,13 +321,14 @@ private struct UpdatesCard: View {
         case .available(let r): "StatMenu \(r.version) is available"
         case .upToDate: "StatMenu is up to date"
         case .failed: "Couldn't check for updates"
+        case .installFailed: "Couldn't install the update"
         case .idle: "Version \(updater.currentVersion)"
         }
     }
 
     private var detail: String? {
         switch updater.state {
-        case .failed(let message): message
+        case .failed(let message), .installFailed(let message): message
         case .available: "You have \(updater.currentVersion)."
         default: updater.lastChecked.map { "Last checked \($0.formatted(.relative(presentation: .named)))." }
         }
