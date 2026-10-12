@@ -24,11 +24,15 @@ final class NetworkMonitor {
         }
         infoCountdown -= 1
 
-        let counters = Self.readCounters()
+        // Ask the kernel for just the measured interface when there is one; listing every interface
+        // (tunnels, AWDL, bridges…) each tick is most of the cost.
+        let index = primary.map { if_nametoindex($0) } ?? 0
+        var counters = index > 0 ? Self.readCounters(index: index) : [:]
         let names: [String]
         if let primary, counters[primary] != nil {
             names = [primary]
         } else {
+            counters = Self.readCounters()
             names = counters.keys.filter { $0.hasPrefix("en") }
         }
 
@@ -58,8 +62,9 @@ final class NetworkMonitor {
         return stats
     }
 
-    private static func readCounters() -> [String: (UInt64, UInt64)] {
-        var mib: [Int32] = [CTL_NET, PF_ROUTE, 0, 0, NET_RT_IFLIST2, 0]
+    /// Byte counters per interface; `index` limits the listing to one interface (0 lists them all).
+    private static func readCounters(index: UInt32 = 0) -> [String: (UInt64, UInt64)] {
+        var mib: [Int32] = [CTL_NET, PF_ROUTE, 0, 0, NET_RT_IFLIST2, Int32(bitPattern: index)]
         var length = 0
         guard sysctl(&mib, 6, nil, &length, nil, 0) == 0, length > 0 else { return [:] }
         var buffer = [UInt8](repeating: 0, count: length)

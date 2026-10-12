@@ -8,6 +8,10 @@ final class DiskMonitor {
     private var volumes: [VolumeInfo] = []
     private var volumeRefreshCountdown = 0
     private var previousPerDisk: [String: (read: UInt64, write: UInt64)] = [:]
+    /// Name, location and BSD name never change for a given driver, so they're looked up once per driver
+    /// (keyed by registry entry ID) rather than walking its parent and child every tick.
+    private var diskInfo: [UInt64: DiskInfo] = [:]
+    private struct DiskInfo { let bsd: String?; let name: String; let location: String; let isVirtual: Bool }
     /// Disk chosen in the Disks tab (BSD name); nil means every physical disk.
     var selected: String? { didSet { if selected != oldValue { lastRead = nil; lastWrite = nil } } }
 
@@ -26,7 +30,7 @@ final class DiskMonitor {
         let dt = now - lastTime
         var read: UInt64 = 0, write: UInt64 = 0
         var perDisk: [String: (read: UInt64, write: UInt64)] = [:]
-        let disks = Self.readDisks()
+        let disks = readDisks()
         let chosen = selected.flatMap { bsd in disks.contains { $0.bsd == bsd } ? bsd : nil }
         stats.isAutomatic = chosen == nil
         for disk in disks {
@@ -60,8 +64,9 @@ final class DiskMonitor {
     }
 
     /// Every block-storage driver with its cumulative byte counters, product name and BSD name.
-    private static func readDisks() -> [(bsd: String, name: String, location: String, isVirtual: Bool, read: UInt64, write: UInt64)] {
+    private func readDisks() -> [(bsd: String, name: String, location: String, isVirtual: Bool, read: UInt64, write: UInt64)] {
         var result: [(String, String, String, Bool, UInt64, UInt64)] = []
+        var seen = Set<UInt64>()
         var iterator: io_iterator_t = 0
         guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("IOBlockStorageDriver"), &iterator) == KERN_SUCCESS else { return [] }
         defer { IOObjectRelease(iterator) }
@@ -70,31 +75,46 @@ final class DiskMonitor {
             defer { IOObjectRelease(driver); driver = IOIteratorNext(iterator) }
             guard let stats = IORegistryEntryCreateCFProperty(driver, "Statistics" as CFString, kCFAllocatorDefault, 0)?
                 .takeRetainedValue() as? [String: Any] else { continue }
-            var name = "Disk", location = "Unknown", isVirtual = false, bsd: String?
-            var parent: io_registry_entry_t = 0
-            if IORegistryEntryGetParentEntry(driver, kIOServicePlane, &parent) == KERN_SUCCESS {
-                if let chars = IORegistryEntryCreateCFProperty(parent, "Device Characteristics" as CFString, kCFAllocatorDefault, 0)?
-                    .takeRetainedValue() as? [String: Any], let product = chars["Product Name"] as? String {
-                    name = product.trimmingCharacters(in: .whitespaces)
-                }
-                if let proto = IORegistryEntryCreateCFProperty(parent, "Protocol Characteristics" as CFString, kCFAllocatorDefault, 0)?
-                    .takeRetainedValue() as? [String: Any], let loc = proto["Physical Interconnect Location"] as? String {
-                    location = loc
-                    isVirtual = proto["Physical Interconnect"] as? String == "Virtual Interface"
-                }
-                IOObjectRelease(parent)
+            var entryID: UInt64 = 0
+            IORegistryEntryGetRegistryEntryID(driver, &entryID)
+            seen.insert(entryID)
+            let info: DiskInfo
+            if let cached = diskInfo[entryID], cached.bsd != nil {
+                info = cached
+            } else {
+                info = Self.readInfo(driver)
+                diskInfo[entryID] = info
             }
-            var child: io_registry_entry_t = 0
-            if IORegistryEntryGetChildEntry(driver, kIOServicePlane, &child) == KERN_SUCCESS {
-                bsd = IORegistryEntryCreateCFProperty(child, "BSD Name" as CFString, kCFAllocatorDefault, 0)?
-                    .takeRetainedValue() as? String
-                IOObjectRelease(child)
-            }
-            guard let bsd else { continue }
-            result.append((bsd, name, location, isVirtual, stats.number("Bytes (Read)")?.uint64Value ?? 0,
+            guard let bsd = info.bsd else { continue }
+            result.append((bsd, info.name, info.location, info.isVirtual, stats.number("Bytes (Read)")?.uint64Value ?? 0,
                            stats.number("Bytes (Write)")?.uint64Value ?? 0))
         }
+        if diskInfo.count > seen.count { diskInfo = diskInfo.filter { seen.contains($0.key) } }
         return result.sorted { $0.0.localizedStandardCompare($1.0) == .orderedAscending }
+    }
+
+    private static func readInfo(_ driver: io_registry_entry_t) -> DiskInfo {
+        var name = "Disk", location = "Unknown", isVirtual = false, bsd: String?
+        var parent: io_registry_entry_t = 0
+        if IORegistryEntryGetParentEntry(driver, kIOServicePlane, &parent) == KERN_SUCCESS {
+            if let chars = IORegistryEntryCreateCFProperty(parent, "Device Characteristics" as CFString, kCFAllocatorDefault, 0)?
+                .takeRetainedValue() as? [String: Any], let product = chars["Product Name"] as? String {
+                name = product.trimmingCharacters(in: .whitespaces)
+            }
+            if let proto = IORegistryEntryCreateCFProperty(parent, "Protocol Characteristics" as CFString, kCFAllocatorDefault, 0)?
+                .takeRetainedValue() as? [String: Any], let loc = proto["Physical Interconnect Location"] as? String {
+                location = loc
+                isVirtual = proto["Physical Interconnect"] as? String == "Virtual Interface"
+            }
+            IOObjectRelease(parent)
+        }
+        var child: io_registry_entry_t = 0
+        if IORegistryEntryGetChildEntry(driver, kIOServicePlane, &child) == KERN_SUCCESS {
+            bsd = IORegistryEntryCreateCFProperty(child, "BSD Name" as CFString, kCFAllocatorDefault, 0)?
+                .takeRetainedValue() as? String
+            IOObjectRelease(child)
+        }
+        return DiskInfo(bsd: bsd, name: name, location: location, isVirtual: isVirtual)
     }
 
     private static func readVolumes() -> [VolumeInfo] {

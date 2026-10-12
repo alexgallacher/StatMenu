@@ -20,7 +20,11 @@ final class StatusItemController: NSObject {
     /// Persistent renderers update incrementally; recreating them rebuilds the view graph every tick.
     private var lightRenderer: ImageRenderer<AnyView>?
     private var darkRenderer: ImageRenderer<AnyView>?
-    private var lastImageKey: Data?
+    /// What the current image shows; an unchanged model skips rendering entirely.
+    private var lastModel: MenuBarItemView.Model?
+    /// Pixels of the current image. A changed model can still draw identical pixels (e.g. a sparkline
+    /// moving less than a pixel), and replacing the image makes macOS redraw every menu bar copy.
+    private var lastPixels: (light: Data, dark: Data)?
     private let panel: DropdownPanel
     private let dropdownView: NSHostingView<AnyView>
     private let sizeReporter = SizeReporter()
@@ -97,13 +101,18 @@ final class StatusItemController: NSObject {
         if lightRenderer == nil || lightRenderer?.scale != scale {
             lightRenderer = renderer(.light)
             darkRenderer = renderer(.dark)
+            lastModel = nil
+            lastPixels = nil
         }
+        // Most ticks leave most items unchanged (same rounded readings); skip both renders and the
+        // menu bar's replicant redraw for those.
+        let model = MenuBarItemView.model(content: content, store: store, settings: settings)
+        if model == lastModel { return }
         guard let light = lightRenderer?.cgImage, let dark = darkRenderer?.cgImage else { return }
-        // Skip the update entirely when the pixels haven't changed (e.g. same readings as last tick).
-        if let key = light.dataProvider?.data as Data?, let darkKey = dark.dataProvider?.data as Data? {
-            let combined = key + darkKey
-            if combined == lastImageKey { return }
-            lastImageKey = combined
+        lastModel = model
+        if let lightPixels = light.dataProvider?.data as Data?, let darkPixels = dark.dataProvider?.data as Data? {
+            if let last = lastPixels, last.light == lightPixels, last.dark == darkPixels { return }
+            lastPixels = (lightPixels, darkPixels)
         }
         let size = NSSize(width: CGFloat(light.width) / scale, height: CGFloat(light.height) / scale)
         let image = NSImage(size: size, flipped: false) { rect in

@@ -11,54 +11,70 @@ struct MenuBarItemView: View {
     let store: SystemStore
     let settings: AppSettings
 
-    private var modules: [Module] {
-        switch content {
-        case .combined: settings.enabledModules
-        case .single(let m): [m]
-        }
-    }
-
     var body: some View {
+        let model = Self.model(content: content, store: store, settings: settings)
         HStack(spacing: 8) {
-            ForEach(modules) { cell(for: $0) }
+            ForEach(model.cells) { cell in
+                HStack(spacing: 5) {
+                    if let values = cell.sparkline { Sparkline(values: values, hue: cell.module.hue) }
+                    MenuBarCell(label: cell.label, value: cell.value, hue: cell.module.hue, color: cell.color,
+                                showLabel: model.showLabels, width: cell.width)
+                }
+            }
         }
         .padding(.horizontal, 3)
         .frame(height: 22)
         .fixedSize()
     }
 
-    @ViewBuilder private func cell(for module: Module) -> some View {
-        switch module {
-        case .cpu:
-            HStack(spacing: 5) {
-                if settings.showGraphs { Sparkline(values: zip(store.cpuUser.tail(16), store.cpuSystem.tail(16)).map(+), hue: Module.cpu.hue) }
-                MenuBarCell(label: "CPU", value: Fmt.percent(store.cpu.total), hue: Module.cpu.hue, color: Theme.level(store.cpu.total),
-                            showLabel: settings.showLabels)
-            }
-        case .gpu:
-            HStack(spacing: 5) {
-                if settings.showGraphs { Sparkline(values: store.gpuHistory.tail(16), hue: Module.gpu.hue) }
-                MenuBarCell(label: "GPU", value: Fmt.percent(store.gpu.utilization), hue: Module.gpu.hue, showLabel: settings.showLabels)
-            }
-        case .memory:
-            MenuBarCell(label: "MEM", value: Fmt.percent(store.memory.usage), hue: Module.memory.hue,
-                        color: Theme.pressure(store.memory.pressureLevel), showLabel: settings.showLabels)
-        case .disk:
-            MenuBarCell(label: "DISK", value: Fmt.percent(store.disk.root?.usage ?? 0), hue: Module.disk.hue, showLabel: settings.showLabels)
-        case .network:
-            // Same pattern as every other item: dot + small label (upload) over the main value (download).
-            MenuBarCell(label: "↑ " + Fmt.compactRate(store.network.upRate),
-                        value: "↓ " + Fmt.compactRate(store.network.downRate),
-                        hue: Module.network.hue, showLabel: settings.showLabels, width: 42)
-        case .sensors:
-            MenuBarCell(label: "TEMP", value: Fmt.temperature(store.sensors.cpu, fahrenheit: settings.useFahrenheit), hue: Module.sensors.hue,
-                        color: Theme.heat(store.sensors.cpu), showLabel: settings.showLabels, width: 28)
-        case .battery:
-            MenuBarCell(label: "PWR",
-                        value: store.battery.present ? Fmt.percent(store.battery.percent)
-                            : store.sensors.systemPower.map { "\(Int($0.rounded()))W" } ?? "—",
-                        hue: Module.battery.hue, showLabel: settings.showLabels)
+    /// Everything the item draws, as plain values. The view renders from this, and `StatusItemController`
+    /// compares it between ticks to skip re-rendering an item whose content hasn't changed.
+    struct Model: Hashable {
+        struct Cell: Hashable, Identifiable {
+            let module: Module
+            let label: String
+            let value: String
+            var color: Color = Theme.ink
+            var width: CGFloat = 33
+            var sparkline: [Double]?
+            var id: Module { module }
         }
+        let cells: [Cell]
+        let showLabels: Bool
+    }
+
+    static func model(content: ItemContent, store: SystemStore, settings: AppSettings) -> Model {
+        let modules: [Module] = switch content {
+        case .combined: settings.enabledModules
+        case .single(let m): [m]
+        }
+        let cells = modules.map { module -> Model.Cell in
+            switch module {
+            case .cpu:
+                Model.Cell(module: .cpu, label: "CPU", value: Fmt.percent(store.cpu.total), color: Theme.level(store.cpu.total),
+                           sparkline: settings.showGraphs ? zip(store.cpuUser.tail(16), store.cpuSystem.tail(16)).map(+) : nil)
+            case .gpu:
+                Model.Cell(module: .gpu, label: "GPU", value: Fmt.percent(store.gpu.utilization),
+                           sparkline: settings.showGraphs ? store.gpuHistory.tail(16) : nil)
+            case .memory:
+                Model.Cell(module: .memory, label: "MEM", value: Fmt.percent(store.memory.usage),
+                           color: Theme.pressure(store.memory.pressureLevel))
+            case .disk:
+                Model.Cell(module: .disk, label: "DISK", value: Fmt.percent(store.disk.root?.usage ?? 0))
+            case .network:
+                // Same pattern as every other item: dot + small label (upload) over the main value (download).
+                Model.Cell(module: .network, label: "↑ " + Fmt.compactRate(store.network.upRate),
+                           value: "↓ " + Fmt.compactRate(store.network.downRate), width: 42)
+            case .sensors:
+                Model.Cell(module: .sensors, label: "TEMP", value: Fmt.temperature(store.sensors.cpu, fahrenheit: settings.useFahrenheit),
+                           color: Theme.heat(store.sensors.cpu), width: 28)
+            case .battery:
+                Model.Cell(module: .battery, label: "PWR",
+                           value: store.battery.present ? Fmt.percent(store.battery.percent)
+                               : store.sensors.systemPower.map { "\(Int($0.rounded()))W" } ?? "—")
+            }
+        }
+        return Model(cells: cells, showLabels: settings.showLabels)
     }
 }
 
