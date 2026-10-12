@@ -18,6 +18,8 @@ final class StatusItemController: NSObject {
     private let statusItem: NSStatusItem
     private let store: SystemStore
     /// Persistent renderers update incrementally; recreating them rebuilds the view graph every tick.
+    /// Each render hands them the new model: a renderer only notices store changes on a later run loop pass,
+    /// so reading its image straight after an update would return the previous frame.
     private var lightRenderer: ImageRenderer<AnyView>?
     private var darkRenderer: ImageRenderer<AnyView>?
     /// What the current image shows; an unchanged model skips rendering entirely.
@@ -92,22 +94,23 @@ final class StatusItemController: NSObject {
     func refresh() {
         guard let button = statusItem.button else { return }
         let scale = button.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
-        func renderer(_ scheme: ColorScheme) -> ImageRenderer<AnyView> {
-            let r = ImageRenderer(content: AnyView(MenuBarItemView(content: content, store: store, settings: settings)
-                .environment(\.colorScheme, scheme)))
-            r.scale = scale
-            return r
-        }
-        if lightRenderer == nil || lightRenderer?.scale != scale {
-            lightRenderer = renderer(.light)
-            darkRenderer = renderer(.dark)
-            lastModel = nil
-            lastPixels = nil
-        }
         // Most ticks leave most items unchanged (same rounded readings); skip both renders and the
         // menu bar's replicant redraw for those.
         let model = MenuBarItemView.model(content: content, store: store, settings: settings)
-        if model == lastModel { return }
+        func view(_ scheme: ColorScheme) -> AnyView {
+            AnyView(MenuBarItemContent(model: model).environment(\.colorScheme, scheme))
+        }
+        if let light = lightRenderer, let dark = darkRenderer, light.scale == scale {
+            if model == lastModel { return }
+            light.content = view(.light)
+            dark.content = view(.dark)
+        } else {
+            lightRenderer = ImageRenderer(content: view(.light))
+            darkRenderer = ImageRenderer(content: view(.dark))
+            lightRenderer?.scale = scale
+            darkRenderer?.scale = scale
+            lastPixels = nil
+        }
         guard let light = lightRenderer?.cgImage, let dark = darkRenderer?.cgImage else { return }
         lastModel = model
         if let lightPixels = light.dataProvider?.data as Data?, let darkPixels = dark.dataProvider?.data as Data? {
