@@ -12,25 +12,18 @@ final class SystemStore {
     var gpuHistory = History()
 
     var memory = MemoryStats()
-    var memoryHistory = History()
-    var pressureHistory = History()
-
     var disk = DiskStats()
-    var diskRead = History()
-    var diskWrite = History()
-
     var network = NetworkStats()
-    var netDown = History()
-    var netUp = History()
-
     var battery = BatteryStats()
-    var batteryHistory = History()
-
     var sensors = SensorStats()
-    var cpuTempHistory = History()
 
     /// History for every individual value shown in the dropdowns, keyed by `SeriesKey`, for hover graphs.
-    var series: [String: History] = [:]
+    /// Updated in place under a single observation change per tick, so the ~150 buffers aren't copied.
+    var series: [String: History] {
+        access(keyPath: \.series)
+        return seriesStorage
+    }
+    @ObservationIgnored private var seriesStorage: [String: History] = [:]
 
     /// Minute / ten-minute averages for the longer chart ranges. Not observed directly; views depend on
     /// `longTermVersion`, which changes once per update.
@@ -56,24 +49,12 @@ final class SystemStore {
         gpuHistory.append(s.gpu.utilization)
 
         memory = s.memory
-        memoryHistory.append(s.memory.usage)
-        pressureHistory.append(s.memory.pressure)
-
         disk = s.disk
-        diskRead.append(s.disk.readRate)
-        diskWrite.append(s.disk.writeRate)
-
         network = s.network
-        netDown.append(s.network.downRate)
-        netUp.append(s.network.upRate)
-
         battery = s.battery
-        batteryHistory.append(s.battery.percent)
-
         sensors = s.sensors
-        cpuTempHistory.append(s.sensors.cpu ?? 0)
 
-        recordSeries(s)
+        withMutation(keyPath: \.series) { recordSeries(s) }
 
         if let top = s.topCPU { topCPU = top }
         if let top = s.topMemory { topMemory = top }
@@ -98,11 +79,10 @@ final class SystemStore {
     }
 
     private func recordSeries(_ s: Snapshot) {
-        var all = series
         let now = Date().timeIntervalSince1970
         func record(_ key: String, _ value: Double?) {
             guard let value else { return }
-            all[key, default: History()].append(value)
+            seriesStorage[key, default: History()].append(value)
             longTerm.add(key, value, at: now)
         }
         record("cpu.total", s.cpu.total)
@@ -162,7 +142,6 @@ final class SystemStore {
         record("battery.percent", s.battery.present ? s.battery.percent : nil)
         record("battery.power", s.battery.power)
         record("battery.voltage", s.battery.voltage)
-        series = all
         longTermVersion &+= 1
     }
 }

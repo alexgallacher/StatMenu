@@ -25,7 +25,9 @@ final class Sampler {
         queue.async { [self] in
             timer?.cancel()
             let t = DispatchSource.makeTimerSource(queue: queue)
-            t.schedule(deadline: .now() + .milliseconds(300), repeating: interval, leeway: .milliseconds(150))
+            // A generous leeway (10% of the interval) lets macOS coalesce this wakeup with other timers.
+            t.schedule(deadline: .now() + .milliseconds(300), repeating: interval,
+                       leeway: .milliseconds(max(150, Int(interval * 100))))
             t.setEventHandler { [weak self] in self?.tick() }
             timer = t
             t.resume()
@@ -77,7 +79,7 @@ final class Sampler {
         s.memory = memory.sample()
         s.disk = disk.sample(detailed: detailed)
         s.network = network.sample(detailed: detailed)
-        s.network.wifi = wifi.sample(primaryInterface: s.network.interface)
+        s.network.wifi = wifi.sample(primaryInterface: s.network.interface, detailed: detailed)
         s.battery = battery.sample(detailed: detailed)
         // The fuel gauge refreshes slowly; use the SMC's live readings where they can be trusted.
         if s.battery.present, !s.battery.onAC, let live = s.sensors.batteryPower {
