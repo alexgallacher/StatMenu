@@ -57,6 +57,13 @@ enum Fmt {
         return (mhz.map(num) ?? "Idle", num(maxMHz) + (ghz ? " GHz" : " MHz"))
     }
 
+    /// Energy, e.g. "0.42 Wh", "12.3 Wh", "1.25 kWh".
+    static func energy(_ wattHours: Double) -> String {
+        let wh = max(0, wattHours)
+        if wh >= 1000 { return String(format: "%.2f kWh", wh / 1000) }
+        return String(format: wh < 10 ? "%.2f Wh" : (wh < 100 ? "%.1f Wh" : "%.0f Wh"), wh)
+    }
+
     static func watts(_ w: Double) -> String { String(format: w < 10 ? "%.2f W" : "%.1f W", w) }
 
     static func temperature(_ celsius: Double?, fahrenheit: Bool) -> String {

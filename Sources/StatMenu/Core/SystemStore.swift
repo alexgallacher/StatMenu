@@ -30,6 +30,10 @@ final class SystemStore {
     @ObservationIgnored let longTerm = LongTermStore()
     private(set) var longTermVersion = 0
 
+    /// Uptime of the previous system power reading, for integrating power into energy. Uptime stops while
+    /// the Mac sleeps, so sleep isn't counted.
+    @ObservationIgnored private var lastPowerTime: TimeInterval?
+
     @ObservationIgnored let dataUsage = DataUsageStore()
     private(set) var dataUsageVersion = 0
 
@@ -76,6 +80,17 @@ final class SystemStore {
         }
         _ = longTermVersion
         return longTerm.columns(key, range, now: Date().timeIntervalSince1970)
+    }
+
+    /// Energy the whole computer used over `range`, in watt-hours, counted while StatMenu was running.
+    /// Nil when there's no system power reading for that range.
+    func energyUsed(_ range: HistoryRange) -> Double? {
+        if range == .recent {
+            let recent = (series["energy.system"] ?? History()).recent(HistoryRange.columns)
+            return recent.isEmpty ? nil : recent.reduce(0, +)
+        }
+        _ = longTermVersion
+        return longTerm.total("energy.system", range, now: Date().timeIntervalSince1970)
     }
 
     private func recordSeries(_ s: Snapshot) {
@@ -138,6 +153,17 @@ final class SystemStore {
         for r in s.sensors.readings { record("temp.\(r.name)", r.value) }
         for f in s.sensors.fans { record("fan.\(f.index)", f.rpm) }
         record("power.system", s.sensors.systemPower)
+        // Watt-hours since the previous reading. Gaps longer than a minute (e.g. the sampler stalled) are
+        // skipped rather than guessed at.
+        let uptime = ProcessInfo.processInfo.systemUptime
+        if let watts = s.sensors.systemPower {
+            if let last = lastPowerTime, uptime > last, uptime - last <= 60 {
+                record("energy.system", watts * (uptime - last) / 3_600)
+            }
+            lastPowerTime = uptime
+        } else {
+            lastPowerTime = nil
+        }
 
         record("battery.percent", s.battery.present ? s.battery.percent : nil)
         record("battery.power", s.battery.power)

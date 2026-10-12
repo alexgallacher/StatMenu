@@ -392,6 +392,11 @@ struct ModulePanel: View {
                     Row(label: "Power adapter input", value: Fmt.watts(input), hover: watts("Power adapter input", "power.adapter", .battery))
                 }
             }
+            Block(label: "Energy used", trailing: range.caption(interval: settings.updateInterval)) {
+                Row(label: "Whole computer", value: store.energyUsed(range).map(Fmt.energy) ?? "—")
+                Text("Counted while StatMenu is running. Change the period with the chart range above.")
+                    .font(Typo.caption).foregroundStyle(Theme.label)
+            }
         }
         if b.present {
             Block(label: "Battery") {
