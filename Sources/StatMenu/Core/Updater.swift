@@ -17,6 +17,8 @@ final class Updater {
         case available(Release)
         case installing
         case failed(String)
+        /// The check worked but downloading or installing the new version didn't.
+        case installFailed(String)
     }
 
     struct Release: Equatable {
@@ -96,12 +98,15 @@ final class Updater {
     private func handleCheck(data: Data?, response: URLResponse?, error: Error?, userInitiated: Bool) {
         lastChecked = Date()
         defaults.set(lastChecked, forKey: "updatesLastChecked")
-        guard error == nil, (response as? HTTPURLResponse)?.statusCode == 200, let data,
+        let status = (response as? HTTPURLResponse)?.statusCode
+        guard error == nil, status == 200, let data,
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let tag = json["tag_name"] as? String,
               let page = (json["html_url"] as? String).flatMap(URL.init(string:)),
               let assets = json["assets"] as? [[String: Any]] else {
-            state = .failed(error?.localizedDescription ?? "Couldn't reach GitHub. Try again later.")
+            // The API allows only 60 anonymous requests an hour per IP address, which a shared network
+            // (VPN, office, school) can use up. The release page isn't limited that way, so try that.
+            checkReleasePage(apiStatus: status, apiError: error, userInitiated: userInitiated)
             return
         }
         func asset(_ name: String) -> URL? {
@@ -110,14 +115,55 @@ final class Updater {
                 .flatMap(URL.init(string:))
         }
         let version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
+        finishCheck(version: version, notes: json["body"] as? String ?? "", zip: asset("StatMenu.zip"),
+                    signature: asset("StatMenu.zip.sig"), page: page, userInitiated: userInitiated)
+    }
+
+    /// Fallback check: `github.com/<repo>/releases/latest` redirects to the newest release's tag page, and
+    /// release files live at fixed URLs. No release notes this way, and the signature check still applies.
+    private func checkReleasePage(apiStatus: Int?, apiError: Error?, userInitiated: Bool) {
+        guard let repository else { return }
+        var request = URLRequest(url: URL(string: "https://github.com/\(repository)/releases/latest")!)
+        request.httpMethod = "HEAD"
+        request.setValue("StatMenu/\(currentVersion)", forHTTPHeaderField: "User-Agent")
+        URLSession.shared.dataTask(with: request) { _, response, error in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    let final = (response as? HTTPURLResponse).flatMap { $0.statusCode == 200 ? $0.url : nil }
+                    // e.g. https://github.com/owner/repo/releases/tag/v1.0.4
+                    guard error == nil, let final, final.pathComponents.dropLast().last == "tag" else {
+                        self.state = .failed(Self.checkFailureMessage(status: apiStatus, error: apiError ?? error))
+                        return
+                    }
+                    let tag = final.lastPathComponent
+                    let version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
+                    let files = URL(string: "https://github.com/\(repository)/releases/download/\(tag)/")!
+                    self.finishCheck(version: version, notes: "", zip: files.appendingPathComponent("StatMenu.zip"),
+                                     signature: files.appendingPathComponent("StatMenu.zip.sig"), page: final,
+                                     userInitiated: userInitiated)
+                }
+            }
+        }.resume()
+    }
+
+    private func finishCheck(version: String, notes: String, zip: URL?, signature: URL?, page: URL, userInitiated: Bool) {
         guard Self.isNewer(version, than: currentVersion) else { state = .upToDate; return }
-        guard let zip = asset("StatMenu.zip"), let sig = asset("StatMenu.zip.sig") else {
+        guard let zip, let signature else {
             state = .failed("Version \(version) is out, but its download isn't ready yet.")
             return
         }
-        let release = Release(version: version, notes: json["body"] as? String ?? "", zipURL: zip, signatureURL: sig, pageURL: page)
+        let release = Release(version: version, notes: notes, zipURL: zip, signatureURL: signature, pageURL: page)
         state = .available(release)
         if automaticallyInstalls && !userInitiated { install(release) }
+    }
+
+    private static func checkFailureMessage(status: Int?, error: Error?) -> String {
+        if let error { return error.localizedDescription }
+        switch status {
+        case 403?, 429?: return "GitHub is limiting update checks from this network. Try again in an hour."
+        case let code?: return "GitHub returned an error (HTTP \(code)). Try again later."
+        case nil: return "Couldn't reach GitHub. Try again later."
+        }
     }
 
     /// Compares dotted version numbers numerically ("1.10" is newer than "1.9").
@@ -154,7 +200,7 @@ final class Updater {
             await MainActor.run {
                 switch result {
                 case .success(let newApp): self.replaceAndRelaunch(with: newApp, release: release)
-                case .failure(let error): self.state = .failed((error as? UpdateError)?.message ?? error.localizedDescription)
+                case .failure(let error): self.state = .installFailed((error as? UpdateError)?.message ?? error.localizedDescription)
                 }
             }
         }
@@ -184,7 +230,7 @@ final class Updater {
         } catch {
             // No permission to replace the installed copy: show the verified new version instead.
             NSWorkspace.shared.activateFileViewerSelecting([newApp])
-            state = .failed("Couldn't replace StatMenu automatically. Drag the new version into Applications.")
+            state = .installFailed("Couldn't replace StatMenu automatically. Drag the new version into Applications.")
             return
         }
         // Relaunch the new copy once this one has quit.
