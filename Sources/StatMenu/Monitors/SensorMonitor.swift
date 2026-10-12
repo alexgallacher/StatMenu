@@ -52,7 +52,7 @@ final class SensorMonitor {
         for key in smcTemperatureKeys {
             let prefix = String(key.prefix(2))
             let name = Self.knownSMCPrefixes[prefix]
-            if let name {
+            if name != nil {
                 guard prefix == Self.menuBarPrefix || refreshOther else { continue }
             } else {
                 guard refreshRaw else { continue }

@@ -12,19 +12,7 @@ struct MenuBarItemView: View {
     let settings: AppSettings
 
     var body: some View {
-        let model = Self.model(content: content, store: store, settings: settings)
-        HStack(spacing: 8) {
-            ForEach(model.cells) { cell in
-                HStack(spacing: 5) {
-                    if let values = cell.sparkline { Sparkline(values: values, hue: cell.module.hue) }
-                    MenuBarCell(label: cell.label, value: cell.value, hue: cell.module.hue, color: cell.color,
-                                showLabel: model.showLabels, width: cell.width)
-                }
-            }
-        }
-        .padding(.horizontal, 3)
-        .frame(height: 22)
-        .fixedSize()
+        MenuBarItemContent(model: Self.model(content: content, store: store, settings: settings))
     }
 
     /// Everything the item draws, as plain values. The view renders from this, and `StatusItemController`
@@ -75,6 +63,26 @@ struct MenuBarItemView: View {
             }
         }
         return Model(cells: cells, showLabels: settings.showLabels)
+    }
+}
+
+/// Draws a menu bar item from its model alone, so a renderer given a new model draws it straight away.
+struct MenuBarItemContent: View {
+    let model: MenuBarItemView.Model
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(model.cells) { cell in
+                HStack(spacing: 5) {
+                    if let values = cell.sparkline { Sparkline(values: values, hue: cell.module.hue) }
+                    MenuBarCell(label: cell.label, value: cell.value, hue: cell.module.hue, color: cell.color,
+                                showLabel: model.showLabels, width: cell.width)
+                }
+            }
+        }
+        .padding(.horizontal, 3)
+        .frame(height: 22)
+        .fixedSize()
     }
 }
 
